@@ -2,12 +2,132 @@
 <html lang="en">
 <head>
     <script src="https://npmcdn.com/babel-core@5.8.38/browser.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
     <script type="text/babel" >
         "use strict";
-    
+
+        let canvas;
+        let ctx;
+        let socket; 
+        
+        //User is you, users is the collection of users
+        let user = RandomNum(1000);
+        let users = {};
+        console.log("User: " + user);
+        let color;
+
+        //Circle needs to be made for each user
+        let circle = {
+            lastUpdate: new Date().getTime(),
+            x: RandomNum(750) + 35,
+            y: RandomNum(750) + 35,
+            xMovement: RandomNum(5) + 1,
+            yMovement: RandomNum(5) + 1,
+            width: 50,
+            height: 50,
+            color: color  
+        };
+        
+        const updateCircles = () => {
+            circle = {
+                lastUpdate: new Date().getTime(),
+                x: circle.x + circle.xMovement,
+                y: circle.y + circle.yMovement,
+                xMovement: circle.xMovement,
+                yMovement: circle.yMovement,
+                width: 50,
+                height: 50,
+                color: color
+            };
+            
+            //Check boundaries
+            if(circle.x > canvas.width - 50 || circle.x < 50){
+                circle.xMovement *= -1;
+            }
+           
+            if(circle.y > canvas.height - 50 || circle.y < 50){
+                circle.yMovement *= -1;
+            }
+            
+            //Send draw
+            socket.emit('draw', {user: user, circle: circle});
+        }
+        
+        const handleMessage = (data) => {
+            if(!users[data.user]){
+                users[data.user] = data.circle;
+            }
+            else if(data.circle.lastUpdate > users[data.user].lastUpdate){
+                users[data.user] = data.circle;
+            }
+            draw();
+        };     
+        
+        const removeUser = (data) => {
+            delete users[data];
+            ctx.clearRect(0,0, canvas.width, canvas.height);
+            draw();
+        };
+        
+        const draw = () => {
+            ctx.clearRect(0,0, canvas.width, canvas.height);
+            let keys = Object.keys(users);
+            
+            for(let i = 0; i < keys.length; i++){
+                const circle = users[keys[i]];
+                ctx.fillStyle = circle.color;
+                ctx.beginPath();
+                ctx.arc(circle.x, circle.y, 50, 0, 2*Math.PI);
+                ctx.fill();
+            }
+            
+            //Border
+            ctx.strokeStyle = "black";
+            ctx.lineWidth = 8;
+            ctx.strokeRect(0, 0, canvas.width, canvas.height);
+            //Show your circle color
+            ctx.font = "24px Montserrat";
+            ctx.fillStyle = color;
+            ctx.fillText("YOUR COLOR :) ", 350, 775);
+        };
+        
+        function RandomNum(num) {
+          return Math.floor(Math.random()* num);
+        }
+ 
+        const init = () => {
+            canvas = document.querySelector("#canvas");
+            ctx = canvas.getContext("2d");
+            
+            ctx.strokeStyle = "black";
+            ctx.lineWidth = 8;
+            ctx.strokeRect(0, 0, canvas.width, canvas.height);
+        
+            socket = io.connect();
+            
+            color = 'rgb('+ RandomNum(255) + ', ' + RandomNum(255) + ', ' + RandomNum(255) + ')';
+            
+            socket.on('connect', function () {
+                console.log("Connecting...");
+                socket.emit('join', {user: user});
+                setInterval(updateCircles, 10)
+            }); 
+            socket.on('draw', handleMessage);
+            socket.on('leave', removeUser);
+            
+            
+            
+        };
+
+      window.onload = init;
+      window.onbeforeunload = function(){
+          delete users[user];
+          ctx.clearRect(0,0, canvas.width, canvas.height);
+          socket.emit('leaving', {user: user});
+      };
     </script>
 </head>
 <body>
-
+    <canvas id="canvas" height="800" width="800">Please use an HTML 5 browser</canvas>
 </body>
 </html>
